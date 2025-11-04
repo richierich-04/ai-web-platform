@@ -10,7 +10,9 @@ class IdeationAgent {
 4. Identify key features and user flows
 5. Suggest technology stack and best practices
 
-Provide structured output in the following JSON format:
+CRITICAL: You MUST respond with ONLY valid JSON. No markdown, no code blocks, no extra text.
+
+Provide structured output in this EXACT JSON format:
 {
   "projectName": "string",
   "description": "string",
@@ -36,6 +38,9 @@ Provide structured output in the following JSON format:
 
   async generateIdeation(userPrompt) {
     try {
+      console.log('\n=== IDEATION AGENT START ===');
+      console.log('User Prompt:', userPrompt);
+
       const enhancedPrompt = `
 User Request: ${userPrompt}
 
@@ -47,22 +52,58 @@ Please analyze this request and provide a comprehensive ideation document that i
 5. User flows and interactions
 6. Design considerations
 
-Return ONLY valid JSON without markdown formatting or code blocks.`;
+IMPORTANT: Return ONLY valid JSON without any markdown formatting, code blocks, or additional text.
+Start your response directly with { and end with }`;
 
+      console.log('Calling Gemini API...');
       const response = await geminiService.generateContent(
         enhancedPrompt,
         this.systemPrompt
       );
 
+      console.log('Raw Gemini Response:', response);
+      console.log('Response length:', response.length);
+
       // Clean response to extract JSON
       let cleanedResponse = response.trim();
-      if (cleanedResponse.startsWith('```json')) {
+      
+      // Remove markdown code blocks
+      if (cleanedResponse.includes('```json')) {
         cleanedResponse = cleanedResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (cleanedResponse.startsWith('```')) {
+      } else if (cleanedResponse.includes('```')) {
         cleanedResponse = cleanedResponse.replace(/```\n?/g, '');
       }
 
-      const ideation = JSON.parse(cleanedResponse);
+      // Find JSON object in response
+      const jsonStart = cleanedResponse.indexOf('{');
+      const jsonEnd = cleanedResponse.lastIndexOf('}');
+      
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        cleanedResponse = cleanedResponse.substring(jsonStart, jsonEnd + 1);
+      }
+
+      console.log('Cleaned Response:', cleanedResponse.substring(0, 200) + '...');
+
+      let ideation;
+      try {
+        ideation = JSON.parse(cleanedResponse);
+        console.log('Successfully parsed JSON');
+      } catch (parseError) {
+        console.error('JSON Parse Error:', parseError.message);
+        console.error('Failed to parse:', cleanedResponse.substring(0, 500));
+        throw new Error(`Invalid JSON response from AI: ${parseError.message}`);
+      }
+
+      // Validate required fields
+      const requiredFields = ['projectName', 'description', 'features', 'components'];
+      const missingFields = requiredFields.filter(field => !ideation[field]);
+      
+      if (missingFields.length > 0) {
+        console.error('Missing required fields:', missingFields);
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+
+      console.log('=== IDEATION AGENT SUCCESS ===\n');
       
       return {
         success: true,
@@ -70,7 +111,12 @@ Return ONLY valid JSON without markdown formatting or code blocks.`;
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Ideation Agent Error:', error);
+      console.error('=== IDEATION AGENT ERROR ===');
+      console.error('Error Type:', error.constructor.name);
+      console.error('Error Message:', error.message);
+      console.error('Error Stack:', error.stack);
+      console.error('=== END ERROR ===\n');
+
       return {
         success: false,
         error: error.message,
